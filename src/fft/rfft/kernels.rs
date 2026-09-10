@@ -1,6 +1,6 @@
 use super::*;
 
-#[cube(launch)]
+#[ruda(launch)]
 pub(super) fn rfft_kernel<F: Float>(
     signal: &Tensor<F>,
     spectrum_re: &mut Tensor<F>,
@@ -9,10 +9,10 @@ pub(super) fn rfft_kernel<F: Float>(
     signal_len: u32,
     #[comptime] n_fft: usize,
     #[comptime] log2_n: usize,
-    #[comptime] threads_per_cube: usize,
+    #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
 ) {
-    let window_index = CUBE_POS;
+    let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
         terminate!();
     }
@@ -33,16 +33,16 @@ pub(super) fn rfft_kernel<F: Float>(
         let src = select(active, i, 0);
         shared_re[j] = select(active, signal_view[src], F::new(0.0));
         shared_im[j] = F::new(0.0);
-        i += threads_per_cube;
+        i += threads_per_ruda;
     }
-    sync_cube();
+    sync_ruda();
 
     fft_butterfly_parallel::<F>(
         &mut shared_re,
         &mut shared_im,
         n_fft,
         log2_n,
-        threads_per_cube,
+        threads_per_ruda,
         FftMode::Forward,
     );
 
@@ -51,7 +51,7 @@ pub(super) fn rfft_kernel<F: Float>(
     while k < n_freq {
         spectrum_re_view[k] = shared_re[k];
         spectrum_im_view[k] = shared_im[k];
-        k += threads_per_cube;
+        k += threads_per_ruda;
     }
-    sync_cube();
+    sync_ruda();
 }

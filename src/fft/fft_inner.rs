@@ -1,4 +1,4 @@
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use std::f32::consts::PI;
 
 use ruda_kernel::dsl::prelude::*;
@@ -21,7 +21,7 @@ impl FftMode {
     }
 }
 
-#[cube]
+#[ruda]
 /// In-place FFT of a 1D complex signal.
 /// Reorders input with bit-reversal and applies butterfly stages
 pub(crate) fn fft_inner_compute<F: Float>(
@@ -36,7 +36,7 @@ pub(crate) fn fft_inner_compute<F: Float>(
     fft_butterfly_stages(spectrum_re, spectrum_im, fft_mode);
 }
 
-#[cube]
+#[ruda]
 /// In-place bit-reversal permutation.
 ///
 /// Reorders elements so index `i` maps to the index formed by
@@ -61,7 +61,7 @@ fn bit_reverse_permutation<F: Float>(
     }
 }
 
-#[cube]
+#[ruda]
 /// Swap two elements of a 1D array.
 fn swap<F: Float>(view_1d: &mut View<F, Coords1d, ReadWrite>, i: usize, j: usize) {
     let tmp = view_1d[i];
@@ -69,7 +69,7 @@ fn swap<F: Float>(view_1d: &mut View<F, Coords1d, ReadWrite>, i: usize, j: usize
     view_1d[j] = tmp;
 }
 
-#[cube]
+#[ruda]
 /// Iterative radix-2 FFT butterfly computation.
 /// Combines pairs of elements using twiddle factors to compute higher-level FFT outputs.
 fn fft_butterfly_stages<F: Float>(
@@ -125,19 +125,19 @@ fn fft_butterfly_stages<F: Float>(
     }
 }
 
-#[cube]
+#[ruda]
 /// Addition on a complex number encoded as a pair of floats
 fn complex_add<F: Float>(a: (F, F), b: (F, F)) -> (F, F) {
     (a.0 + b.0, a.1 + b.1)
 }
 
-#[cube]
+#[ruda]
 /// Subtraction on a complex number encoded as a pair of floats
 fn complex_sub<F: Float>(a: (F, F), b: (F, F)) -> (F, F) {
     (a.0 - b.0, a.1 - b.1)
 }
 
-#[cube]
+#[ruda]
 /// Multiplication on a complex number encoded as a pair of floats
 fn complex_mul<F: Float>(a: (F, F), b: (F, F)) -> (F, F) {
     (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)

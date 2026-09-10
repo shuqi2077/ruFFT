@@ -19,7 +19,7 @@
 //! The caller is responsible for allocating any scratch buffers; see
 //! `rfft_large` for the allocator shape contract.
 
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use core::f32::consts::PI;
 
 use ruda_kernel::dsl::prelude::*;
@@ -44,9 +44,9 @@ use crate::{
 /// memory limits.
 pub(crate) const MAX_SHARED_N_FFT: usize = 4096;
 
-/// Portable cap on the number of units in one cube. Larger FFTs still cover
+/// Portable cap on the number of units in one ruda. Larger FFTs still cover
 /// all bins by having each unit process multiple indices.
-const MAX_UNITS_PER_CUBE: usize = 256;
+const MAX_UNITS_PER_RUDA: usize = 256;
 
 pub(crate) struct CfftBindings<R: Runtime> {
     pub(crate) input_re: TensorBinding<R>,
@@ -135,15 +135,15 @@ fn cfft_shared_launch<R: Runtime>(
     plan: CfftPlan,
 ) -> Result<(), LaunchError> {
     let log2_n = plan.n_fft.trailing_zeros() as usize;
-    let threads_per_cube = (plan.n_fft / 2).clamp(1, MAX_UNITS_PER_CUBE);
-    let cube_dim = CubeDim::new_1d(threads_per_cube as u32);
-    let cube_count =
-        ruda_kernel::dsl::calculate_cube_count_elemwise(client, plan.count, CubeDim::new_single());
+    let threads_per_ruda = (plan.n_fft / 2).clamp(1, MAX_UNITS_PER_RUDA);
+    let ruda_dim = RudaDim::new_1d(threads_per_ruda as u32);
+    let ruda_count =
+        ruda_kernel::dsl::calculate_ruda_count_elemwise(client, plan.count, RudaDim::new_single());
 
     cfft_shared_kernel::launch::<f32, R>(
         client,
-        cube_count,
-        cube_dim,
+        ruda_count,
+        ruda_dim,
         bindings.input_re.into_tensor_arg(),
         bindings.input_im.into_tensor_arg(),
         bindings.output_re.into_tensor_arg(),
@@ -151,7 +151,7 @@ fn cfft_shared_launch<R: Runtime>(
         plan.count as u32,
         plan.n_fft,
         log2_n,
-        threads_per_cube,
+        threads_per_ruda,
         plan.dim,
         plan.fft_mode,
     );
@@ -190,20 +190,20 @@ fn cfft_four_step_launch<R: Runtime>(
         dtype,
     );
 
-    // Step 1: strided FFT_{N1} along the n1 axis of (N1, N2). One cube per
+    // Step 1: strided FFT_{N1} along the n1 axis of (N1, N2). One ruda per
     // (window, n2). Reads from `input_*`, writes to `scratch_*` with fused
     // twiddle multiplication by W_N^{k1 * n2} for the inter-stage factor.
     {
-        let threads_per_cube = (n1 / 2).clamp(1, MAX_UNITS_PER_CUBE);
+        let threads_per_ruda = (n1 / 2).clamp(1, MAX_UNITS_PER_RUDA);
         let log2_n1 = n1.trailing_zeros() as usize;
-        let cube_dim = CubeDim::new_1d(threads_per_cube as u32);
-        let cube_count =
-            ruda_kernel::dsl::calculate_cube_count_elemwise(client, plan.count * n2, CubeDim::new_single());
+        let ruda_dim = RudaDim::new_1d(threads_per_ruda as u32);
+        let ruda_count =
+            ruda_kernel::dsl::calculate_ruda_count_elemwise(client, plan.count * n2, RudaDim::new_single());
 
         cfft_four_step_radix1_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             bindings.input_re.into_tensor_arg(),
             bindings.input_im.into_tensor_arg(),
             scratch_re.clone().binding().into_tensor_arg(),
@@ -212,32 +212,32 @@ fn cfft_four_step_launch<R: Runtime>(
             n1,
             n2,
             log2_n1,
-            threads_per_cube,
+            threads_per_ruda,
             plan.dim,
             plan.fft_mode,
         );
     }
 
-    // Step 2: contiguous FFT_{N2} along the n2 axis of (N1, N2). One cube
+    // Step 2: contiguous FFT_{N2} along the n2 axis of (N1, N2). One ruda
     // per (window, k1). Reads/writes scratch in place.
     {
-        let threads_per_cube = (n2 / 2).clamp(1, MAX_UNITS_PER_CUBE);
+        let threads_per_ruda = (n2 / 2).clamp(1, MAX_UNITS_PER_RUDA);
         let log2_n2 = n2.trailing_zeros() as usize;
-        let cube_dim = CubeDim::new_1d(threads_per_cube as u32);
-        let cube_count =
-            ruda_kernel::dsl::calculate_cube_count_elemwise(client, plan.count * n1, CubeDim::new_single());
+        let ruda_dim = RudaDim::new_1d(threads_per_ruda as u32);
+        let ruda_count =
+            ruda_kernel::dsl::calculate_ruda_count_elemwise(client, plan.count * n1, RudaDim::new_single());
 
         cfft_four_step_radix2_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             scratch_re.clone().binding().into_tensor_arg(),
             scratch_im.clone().binding().into_tensor_arg(),
             (plan.count * n1) as u32,
             n1,
             n2,
             log2_n2,
-            threads_per_cube,
+            threads_per_ruda,
             plan.dim,
             plan.fft_mode,
         );
@@ -246,13 +246,13 @@ fn cfft_four_step_launch<R: Runtime>(
     // Step 3: transpose (N1, N2) -> (N2, N1). Writes natural-order output.
     {
         let total = plan.count * plan.n_fft;
-        let cube_dim = CubeDim::new_1d(256);
-        let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, total, cube_dim);
+        let ruda_dim = RudaDim::new_1d(256);
+        let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, total, ruda_dim);
 
         cfft_four_step_transpose_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             scratch_re.binding().into_tensor_arg(),
             scratch_im.binding().into_tensor_arg(),
             bindings.output_re.into_tensor_arg(),
@@ -270,11 +270,11 @@ fn cfft_four_step_launch<R: Runtime>(
 /// First four-step pass: FFT_{N1} along n1 (strided by N2 in the packed
 /// `n_fft` axis), with a fused W_N^{k1 * n2} twiddle on the way out.
 ///
-/// Grid: `count * N2` cubes. `CUBE_POS = window * N2 + n2`.
+/// Grid: `count * N2` rudas. `RUDA_POS = window * N2 + n2`.
 
 /// Second four-step pass: FFT_{N2} along n2 (contiguous), in place.
 ///
-/// Grid: `count * N1` cubes. `CUBE_POS = window * N1 + k1`.
+/// Grid: `count * N1` rudas. `RUDA_POS = window * N1 + k1`.
 
 /// Transpose (N1, N2) -> (N2, N1) in each selected-axis window.
 /// Converts four-step output `X'[k1, k2]` at flat `k1*N2 + k2` into natural

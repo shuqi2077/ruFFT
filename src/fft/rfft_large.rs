@@ -4,7 +4,7 @@
 //! FFT plus two elementwise passes. With the current shared-memory cutoff,
 //! the large paths are:
 //!
-//! * N = 8192 → M = 4096 → single-pass shared-memory cfft (fast path).
+//! * N = 8192 → M = 4096 → fused shared-memory packed FFT (fast path).
 //! * N = 16384 → M = 8192 → four-step cfft (still fast, no global
 //!   ping-pong per stage).
 //!
@@ -13,14 +13,14 @@
 //! lets N = 8192 use a single shared-memory CFFT of size 4096 instead of the
 //! four-step path.
 //!
-//! Forward `rfft` pipeline:
+//! Forward `rfft` pipeline above the fused shared-memory limit:
 //!   1. `rfft_pack_kernel` — pack real `x[0..N]` into complex
 //!      `y[k] = x[2k] + i*x[2k+1]`, length M.
 //!   2. `cfft_launch_any_size(FORWARD)` — complex FFT of `y`.
 //!   3. `rfft_post_kernel` — recover the half-spectrum
 //!      `X[0..N/2+1]` from `Y` using the Z_even / Z_odd split.
 //!
-//! Inverse `irfft` pipeline:
+//! Inverse `irfft` pipeline above the fused shared-memory limit:
 //!   1. `irfft_pre_kernel` — rebuild the packed `Y` of length M from the
 //!      half-spectrum `X[0..N/2+1]` (inverse of step 3 above).
 //!   2. `cfft_launch_any_size(INVERSE)` — complex IFFT of `Y` into `y`.
@@ -32,7 +32,7 @@
 //! Invariants:
 //! * `n_fft` power of two, `n_fft >= 4` (M >= 2 for the packed FFT).
 
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use core::f32::consts::PI;
 
 use ruda_kernel::dsl::prelude::*;
@@ -45,7 +45,8 @@ use ruda_kernel::library::tensor::TensorHandle;
 use crate::{
     fft::{
         FftMode,
-        cfft::{CfftBindings, cfft_launch_any_size},
+        cfft::{CfftBindings, MAX_SHARED_N_FFT, cfft_launch_any_size},
+        fft_parallel::{bit_reverse, fft_butterfly_parallel},
     },
     layout::BatchSignalLayout,
 };
@@ -72,6 +73,28 @@ pub(crate) fn rfft_large_launch<R: Runtime>(
         .map(|(_, e)| *e)
         .product();
 
+    if m <= MAX_SHARED_N_FFT {
+        let threads = (m / 2).clamp(1, 256);
+        let grid =
+            ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count, RudaDim::new_single());
+        rfft_fused_kernel::launch::<f32, R>(
+            client,
+            grid,
+            RudaDim::new_1d(threads as u32),
+            signal.into_tensor_arg(),
+            spectrum_re.into_tensor_arg(),
+            spectrum_im.into_tensor_arg(),
+            count as u32,
+            signal_len as u32,
+            n_fft,
+            m,
+            m.trailing_zeros() as usize,
+            threads,
+            dim,
+        );
+        return Ok(());
+    }
+
     // Packed buffers of length M.
     let packed_shape: Vec<usize> = signal
         .shape
@@ -93,13 +116,13 @@ pub(crate) fn rfft_large_launch<R: Runtime>(
 
     // Step 1: pack x → y.
     {
-        let cube_dim = CubeDim::new_1d(256);
-        let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, count * m, cube_dim);
+        let ruda_dim = RudaDim::new_1d(256);
+        let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count * m, ruda_dim);
 
         rfft_pack_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             signal.into_tensor_arg(),
             packed_re.clone().binding().into_tensor_arg(),
             packed_im.clone().binding().into_tensor_arg(),
@@ -127,13 +150,13 @@ pub(crate) fn rfft_large_launch<R: Runtime>(
     // Step 3: recover half-spectrum X from Y.
     {
         let n_freq = m + 1;
-        let cube_dim = CubeDim::new_1d(256);
-        let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, count * n_freq, cube_dim);
+        let ruda_dim = RudaDim::new_1d(256);
+        let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count * n_freq, ruda_dim);
 
         rfft_post_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             packed_re.binding().into_tensor_arg(),
             packed_im.binding().into_tensor_arg(),
             spectrum_re.into_tensor_arg(),
@@ -170,6 +193,28 @@ pub(crate) fn irfft_large_launch<R: Runtime>(
         .map(|(_, e)| *e)
         .product();
 
+    if m <= MAX_SHARED_N_FFT {
+        let threads = (m / 2).clamp(1, 256);
+        let grid =
+            ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count, RudaDim::new_single());
+        irfft_fused_kernel::launch::<f32, R>(
+            client,
+            grid,
+            RudaDim::new_1d(threads as u32),
+            spectrum_re.into_tensor_arg(),
+            spectrum_im.into_tensor_arg(),
+            signal.into_tensor_arg(),
+            count as u32,
+            spec_bins as u32,
+            n_fft,
+            m,
+            m.trailing_zeros() as usize,
+            threads,
+            dim,
+        );
+        return Ok(());
+    }
+
     let packed_shape: Vec<usize> = signal
         .shape
         .iter()
@@ -200,13 +245,13 @@ pub(crate) fn irfft_large_launch<R: Runtime>(
 
     // Step 1: build packed Y from half-spectrum X.
     {
-        let cube_dim = CubeDim::new_1d(256);
-        let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, count * m, cube_dim);
+        let ruda_dim = RudaDim::new_1d(256);
+        let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count * m, ruda_dim);
 
         irfft_pre_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             spectrum_re.into_tensor_arg(),
             spectrum_im.into_tensor_arg(),
             packed_in_re.clone().binding().into_tensor_arg(),
@@ -237,13 +282,13 @@ pub(crate) fn irfft_large_launch<R: Runtime>(
 
     // Step 3: unpack y into real x with the 1/M normalisation.
     {
-        let cube_dim = CubeDim::new_1d(256);
-        let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, count * m, cube_dim);
+        let ruda_dim = RudaDim::new_1d(256);
+        let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count * m, ruda_dim);
 
         irfft_unpack_kernel::launch::<f32, R>(
             client,
-            cube_count,
-            cube_dim,
+            ruda_count,
+            ruda_dim,
             packed_out_re.binding().into_tensor_arg(),
             packed_out_im.binding().into_tensor_arg(),
             signal.into_tensor_arg(),

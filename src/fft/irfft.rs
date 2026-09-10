@@ -1,6 +1,6 @@
-//! Inverse real-valued FFT with an intra-cube-parallel radix-2 kernel.
+//! Inverse real-valued FFT with an intra-ruda-parallel radix-2 kernel.
 
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use ruda_kernel::dsl::prelude::*;
 use ruda_kernel::library::tensor::AsView as _;
 use ruda_kernel::library::tensor::AsViewExpand;
@@ -18,7 +18,7 @@ use crate::{
     layout::BatchSignalLayout,
 };
 
-const MAX_UNITS_PER_CUBE: usize = 256;
+const MAX_UNITS_PER_RUDA: usize = 256;
 
 /// Inverse Real-valued Fast Fourier Transform.
 pub fn irfft<R: Runtime>(
@@ -134,15 +134,15 @@ pub fn irfft_launch_padded<R: Runtime>(
     }
 
     let log2_n = n_fft.trailing_zeros() as usize;
-    let threads_per_cube = (n_fft / 2).clamp(1, MAX_UNITS_PER_CUBE);
+    let threads_per_ruda = (n_fft / 2).clamp(1, MAX_UNITS_PER_RUDA);
 
-    let cube_dim = CubeDim::new_1d(threads_per_cube as u32);
-    let cube_count = ruda_kernel::dsl::calculate_cube_count_elemwise(client, count, CubeDim::new_single());
+    let ruda_dim = RudaDim::new_1d(threads_per_ruda as u32);
+    let ruda_count = ruda_kernel::dsl::calculate_ruda_count_elemwise(client, count, RudaDim::new_single());
 
     irfft_kernel::launch::<f32, R>(
         client,
-        cube_count,
-        cube_dim,
+        ruda_count,
+        ruda_dim,
         spectrum_re.into_tensor_arg(),
         spectrum_im.into_tensor_arg(),
         signal.into_tensor_arg(),
@@ -150,7 +150,7 @@ pub fn irfft_launch_padded<R: Runtime>(
         spec_bins as u32,
         n_fft,
         log2_n,
-        threads_per_cube,
+        threads_per_ruda,
         dim,
     );
     Ok(())

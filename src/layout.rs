@@ -1,21 +1,21 @@
 use ruda_kernel::dsl::prelude::*;
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use ruda_kernel::library::tensor::layout::Coords1d;
 use ruda_kernel::library::tensor::layout::Layout;
 use ruda_kernel::library::tensor::layout::LayoutExpand;
 
-#[derive(CubeType, Clone, Copy)]
+#[derive(RudaType, Clone, Copy)]
 /// Allows to work on the last dimension of the signal/spectrum (one window),
 /// abstracting batches
 pub struct BatchSignalLayout {
     num_samples: usize,
     stride_samples: usize,
     batch_offset: usize,
-    #[cube(comptime)]
+    #[ruda(comptime)]
     vector_size: usize,
 }
 
-#[cube]
+#[ruda]
 impl BatchSignalLayout {
     pub fn new<F: Numeric>(tensor: &Tensor<F>, batch_index: usize, #[comptime] dim: usize) -> Self {
         let rank = tensor.rank();
@@ -42,7 +42,7 @@ impl BatchSignalLayout {
     }
 }
 
-#[cube]
+#[ruda]
 impl Layout for BatchSignalLayout {
     type Coordinates = Coords1d;
     type SourceCoordinates = Coords1d;

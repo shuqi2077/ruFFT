@@ -10,8 +10,8 @@ use ruprim::indexing::slice;
 use crate::{irfft_launch, rfft_launch};
 
 // Materializes a padded tensor (allocate + copy) because rfft_launch/irfft_launch
-// in the external cubek crate don't support virtual padding via a length parameter.
-// See: https://github.com/tracel-ai/cubek/issues/194
+// in the kernel library don't support virtual padding via a length parameter.
+// See: https://github.com/shuqi2077/RUDA/blob/main/THIRD_PARTY_NOTICES.md
 fn pad_to_length<R: Runtime>(
     tensor: RudaTensor<R>,
     dim: usize,

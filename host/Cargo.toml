@@ -4,7 +4,7 @@ edition = "2024"
 authors = [ "Dilshod Tadjibaev (@antimora)",]
 license = "MIT OR Apache-2.0"
 description = "ruFFT CPU real transforms, twiddle tables and SIMD butterflies."
-readme = "../../ruda-core/upstream/burn-flex/README.md"
+readme = false
 build = false
 
 [lib]
@@ -27,6 +27,9 @@ version = "1.25.0"
 version = "2.7.1"
 features = [ "alloc", "num-traits", "serde",]
 default-features = false
+
+[dependencies.libm]
+version = "0.2"
 
 [dependencies.macerator]
 version = "0.3.0"

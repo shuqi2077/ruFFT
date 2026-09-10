@@ -1,10 +1,10 @@
-//! Intra-cube-parallel radix-2 FFT primitives used by the RFFT kernels.
+//! Intra-ruda-parallel radix-2 FFT primitives used by the RFFT kernels.
 //!
-//! Each cube processes one FFT window with `CUBE_DIM` units. Inputs and
-//! outputs live in per-cube `SharedMemory<F>`; callers load a bit-reversed
+//! Each ruda processes one FFT window with `RUDA_DIM` units. Inputs and
+//! outputs live in per-ruda `SharedMemory<F>`; callers load a bit-reversed
 //! window before calling [`fft_butterfly_parallel`].
 
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use core::f32::consts::PI;
 
 use ruda_kernel::dsl::prelude::*;
@@ -12,7 +12,7 @@ use ruda_kernel::dsl::prelude::*;
 use crate::fft::FftMode;
 
 /// Reverse the lowest `log2_n` bits of `i`.
-#[cube]
+#[ruda]
 pub(crate) fn bit_reverse(i: usize, #[comptime] log2_n: usize) -> usize {
     let mut j = 0usize;
     let mut x = i;
@@ -25,13 +25,13 @@ pub(crate) fn bit_reverse(i: usize, #[comptime] log2_n: usize) -> usize {
 }
 
 /// Parallel radix-2 butterfly stages on an already-bit-reversed window.
-#[cube]
+#[ruda]
 pub(crate) fn fft_butterfly_parallel<F: Float>(
     shared_re: &mut SharedMemory<F>,
     shared_im: &mut SharedMemory<F>,
     #[comptime] n_fft: usize,
     #[comptime] log2_n: usize,
-    #[comptime] threads_per_cube: usize,
+    #[comptime] threads_per_ruda: usize,
     #[comptime] fft_mode: FftMode,
 ) {
     let num_butterflies = comptime![n_fft / 2];
@@ -67,9 +67,9 @@ pub(crate) fn fft_butterfly_parallel<F: Float>(
             shared_re[i1] = ar - tr;
             shared_im[i1] = ai - ti;
 
-            b += threads_per_cube;
+            b += threads_per_ruda;
         }
-        sync_cube();
+        sync_ruda();
         s += 1usize;
     }
 }

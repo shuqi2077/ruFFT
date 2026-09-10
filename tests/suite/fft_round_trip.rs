@@ -1,11 +1,11 @@
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 #[cfg(feature = "heavy")]
 use ruda_kernel::dsl::Runtime;
 use ruda_test_runtime::TestRuntime;
-use ruda_kernel::dsl::prelude::CubePrimitive;
+use ruda_kernel::dsl::prelude::RudaPrimitive;
 #[cfg(feature = "heavy")]
 use rufft::{irfft, rfft};
-//use cubefx_engine::{SignalSpec, phase_shift_effect};
+//use rudafx_engine::{SignalSpec, phase_shift_effect};
 #[cfg(feature = "heavy")]
 use ruda_test_utils::{HostData, TestInput, assert_equals_approx};
 

@@ -1,7 +1,7 @@
-use ruda_kernel::dsl as cubecl;
-use ruda_kernel::dsl::CubeElement;
+use ruda_kernel::dsl as kernel_dsl;
+use ruda_kernel::dsl::RudaElement;
 use ruda_kernel::dsl::client::ComputeClient;
-use ruda_kernel::dsl::frontend::CubePrimitive;
+use ruda_kernel::dsl::frontend::RudaPrimitive;
 use ruda_kernel::dsl::prelude::StorageType;
 use ruda_kernel::library::tensor::TensorHandle;
 use ruda_kernel::dsl::Runtime;

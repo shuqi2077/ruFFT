@@ -11,12 +11,12 @@
 
 #![allow(clippy::needless_range_loop)]
 
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use std::f32::consts::PI;
 
 use ruda_test_utils::TestRuntime;
 use ruda_kernel::dsl::client::ComputeClient;
-use ruda_kernel::dsl::frontend::CubePrimitive;
+use ruda_kernel::dsl::frontend::RudaPrimitive;
 use ruda_kernel::dsl::zspace::Shape;
 use ruda_kernel::dsl::zspace::Strides;
 use ruda_test_utils::{

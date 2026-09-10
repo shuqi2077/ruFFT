@@ -1,6 +1,6 @@
 use super::*;
 
-#[cube(launch)]
+#[ruda(launch)]
 pub(super) fn cfft_shared_kernel<F: Float>(
     input_re: &Tensor<F>,
     input_im: &Tensor<F>,
@@ -9,11 +9,11 @@ pub(super) fn cfft_shared_kernel<F: Float>(
     num_windows: u32,
     #[comptime] n_fft: usize,
     #[comptime] log2_n: usize,
-    #[comptime] threads_per_cube: usize,
+    #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
 ) {
-    let window_index = CUBE_POS;
+    let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
         terminate!();
     }
@@ -33,16 +33,16 @@ pub(super) fn cfft_shared_kernel<F: Float>(
         let j = bit_reverse(i, log2_n);
         shared_re[j] = input_re_view[i];
         shared_im[j] = input_im_view[i];
-        i += threads_per_cube;
+        i += threads_per_ruda;
     }
-    sync_cube();
+    sync_ruda();
 
     fft_butterfly_parallel::<F>(
         &mut shared_re,
         &mut shared_im,
         n_fft,
         log2_n,
-        threads_per_cube,
+        threads_per_ruda,
         fft_mode,
     );
 
@@ -50,31 +50,31 @@ pub(super) fn cfft_shared_kernel<F: Float>(
     while k < n_fft {
         output_re_view[k] = shared_re[k];
         output_im_view[k] = shared_im[k];
-        k += threads_per_cube;
+        k += threads_per_ruda;
     }
 }
 
-#[cube(launch)]
+#[ruda(launch)]
 pub(super) fn cfft_four_step_radix1_kernel<F: Float>(
     input_re: &Tensor<F>,
     input_im: &Tensor<F>,
     scratch_re: &mut Tensor<F>,
     scratch_im: &mut Tensor<F>,
-    num_cubes: u32,
+    num_rudas: u32,
     #[comptime] n1: usize,
     #[comptime] n2: usize,
     #[comptime] log2_n1: usize,
-    #[comptime] threads_per_cube: usize,
+    #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
 ) {
-    let cube_pos = CUBE_POS;
-    if cube_pos >= num_cubes as usize {
+    let ruda_pos = RUDA_POS;
+    if ruda_pos >= num_rudas as usize {
         terminate!();
     }
 
-    let window = cube_pos / n2;
-    let n2_idx = cube_pos - window * n2;
+    let window = ruda_pos / n2;
+    let n2_idx = ruda_pos - window * n2;
     let input_re_view = input_re.view(BatchSignalLayout::new(input_re, window, dim));
     let input_im_view = input_im.view(BatchSignalLayout::new(input_im, window, dim));
     let mut scratch_re_view = scratch_re.view_mut(BatchSignalLayout::new(scratch_re, window, dim));
@@ -91,16 +91,16 @@ pub(super) fn cfft_four_step_radix1_kernel<F: Float>(
         let flat = i * n2 + n2_idx;
         shared_re[j] = input_re_view[flat];
         shared_im[j] = input_im_view[flat];
-        i += threads_per_cube;
+        i += threads_per_ruda;
     }
-    sync_cube();
+    sync_ruda();
 
     fft_butterfly_parallel::<F>(
         &mut shared_re,
         &mut shared_im,
         n1,
         log2_n1,
-        threads_per_cube,
+        threads_per_ruda,
         fft_mode,
     );
 
@@ -120,29 +120,29 @@ pub(super) fn cfft_four_step_radix1_kernel<F: Float>(
         let flat = k1 * n2 + n2_idx;
         scratch_re_view[flat] = w_re * ar - w_im * ai;
         scratch_im_view[flat] = w_re * ai + w_im * ar;
-        k1 += threads_per_cube;
+        k1 += threads_per_ruda;
     }
 }
 
-#[cube(launch)]
+#[ruda(launch)]
 pub(super) fn cfft_four_step_radix2_kernel<F: Float>(
     scratch_re: &mut Tensor<F>,
     scratch_im: &mut Tensor<F>,
-    num_cubes: u32,
+    num_rudas: u32,
     #[comptime] n1: usize,
     #[comptime] n2: usize,
     #[comptime] log2_n2: usize,
-    #[comptime] threads_per_cube: usize,
+    #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
 ) {
-    let cube_pos = CUBE_POS;
-    if cube_pos >= num_cubes as usize {
+    let ruda_pos = RUDA_POS;
+    if ruda_pos >= num_rudas as usize {
         terminate!();
     }
 
-    let window = cube_pos / n1;
-    let k1 = cube_pos - window * n1;
+    let window = ruda_pos / n1;
+    let k1 = ruda_pos - window * n1;
     let row_base = k1 * n2;
     let mut scratch_re_view = scratch_re.view_mut(BatchSignalLayout::new(scratch_re, window, dim));
     let mut scratch_im_view = scratch_im.view_mut(BatchSignalLayout::new(scratch_im, window, dim));
@@ -155,16 +155,16 @@ pub(super) fn cfft_four_step_radix2_kernel<F: Float>(
         let j = bit_reverse(i, log2_n2);
         shared_re[j] = scratch_re_view[row_base + i];
         shared_im[j] = scratch_im_view[row_base + i];
-        i += threads_per_cube;
+        i += threads_per_ruda;
     }
-    sync_cube();
+    sync_ruda();
 
     fft_butterfly_parallel::<F>(
         &mut shared_re,
         &mut shared_im,
         n2,
         log2_n2,
-        threads_per_cube,
+        threads_per_ruda,
         fft_mode,
     );
 
@@ -172,11 +172,11 @@ pub(super) fn cfft_four_step_radix2_kernel<F: Float>(
     while k2 < n2 {
         scratch_re_view[row_base + k2] = shared_re[k2];
         scratch_im_view[row_base + k2] = shared_im[k2];
-        k2 += threads_per_cube;
+        k2 += threads_per_ruda;
     }
 }
 
-#[cube(launch)]
+#[ruda(launch)]
 pub(super) fn cfft_four_step_transpose_kernel<F: Float>(
     scratch_re: &Tensor<F>,
     scratch_im: &Tensor<F>,
