@@ -30,8 +30,6 @@ implementation limits, **not** verified support or performance guarantees.
 Kernel correctness, driver compilation and speed still require real GPU
 acceptance with `tools/gpu_validation/validate_v16.py`.
 
-See `docs/zh/native-gpu-v16.md` for patch scope and validation boundaries.
-
 
 **English** | [简体中文](https://github.com/shuqi2077/RUDA/blob/main/ruFFT/docs/zh/README.md) | [日本語](https://github.com/shuqi2077/RUDA/blob/main/ruFFT/docs/ja/README.md) | [Deutsch](https://github.com/shuqi2077/RUDA/blob/main/ruFFT/docs/de/README.md) | [Русский](https://github.com/shuqi2077/RUDA/blob/main/ruFFT/docs/ru/README.md)
 
