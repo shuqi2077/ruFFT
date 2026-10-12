@@ -135,12 +135,6 @@ impl<R: Runtime> NdFftPlan<R> {
         let inverse = matches!(kind, NdFftKind::ComplexInverse | NdFftKind::RealInverse);
         let real = matches!(kind, NdFftKind::RealForward | NdFftKind::RealInverse);
         let last = axes.len() - 1;
-        if kind == NdFftKind::RealInverse && like.meta.shape()[axes[last]] != lengths[last] / 2 + 1
-        {
-            return Err(invalid(
-                "IRFFT compressed axis must contain floor(N/2)+1 bins; explicit lengths disambiguate odd N",
-            ));
-        }
         let scale = match norm {
             FftNormalization::None => 1.0,
             FftNormalization::Backward => {
@@ -175,6 +169,13 @@ impl<R: Runtime> NdFftPlan<R> {
                 1.0
             };
         let mut model = like.clone();
+        if kind == NdFftKind::RealInverse {
+            let mut padded_shape = like.meta.shape().clone();
+            padded_shape[axes[last]] = lengths[last] / 2 + 1;
+            if &padded_shape != like.meta.shape() {
+                model = allocate(like, padded_shape);
+            }
+        }
         let mut stages = Vec::with_capacity(sequence.len());
         for index in sequence.drain(..) {
             let axis = axes[index];
@@ -347,6 +348,10 @@ impl<R: Runtime> NdFftPlan<R> {
         );
         let mut re = real.clone();
         let mut im = imag.cloned();
+        if self.kind == NdFftKind::RealInverse && re.meta.shape() != &self.stages[0].input_shape {
+            re = crate::spectral_layout::resize(&re, self.stages[0].input_shape.clone())?;
+            im = Some(crate::spectral_layout::resize(im.as_ref().unwrap(), self.stages[0].input_shape.clone())?);
+        }
         for stage in &mut self.stages {
             if re.meta.shape() != &stage.input_shape {
                 return Err(invalid("FFT stage shape mismatch"));
@@ -374,7 +379,12 @@ impl<R: Runtime> NdFftPlan<R> {
                         )?
                     };
                     copy::<f64, R>(&pair.0, &stage.output[0], 1.0);
-                    copy::<f64, R>(&pair.1, &stage.output[1], 1.0);
+                    if stage.real && !inverse {
+                        let imag = crate::spectral_layout::real_spectrum_imaginary(&pair.1,stage.axis,stage.length)?;
+                        copy::<f64, R>(&imag, &stage.output[1], 1.0);
+                    } else {
+                        copy::<f64, R>(&pair.1, &stage.output[1], 1.0);
+                    }
                 }
                 Axis::Single { plan, half } => {
                     if stage.real && !inverse {
@@ -512,6 +522,50 @@ pub fn irfftn<R: Runtime>(
     norm: FftNormalization,
 ) -> Result<RudaTensor<R>, LaunchError> {
     NdFftPlan::new(real, axes, lengths, NdFftKind::RealInverse, norm)?.inverse_real(real, imag)
+}
+
+/// Adjoint normalization used by Hermitian and inverse-Hermitian transforms.
+pub fn reverse_normalization(norm: FftNormalization) -> FftNormalization {
+    match norm {
+        FftNormalization::Backward => FftNormalization::Forward,
+        FftNormalization::Forward => FftNormalization::Backward,
+        FftNormalization::None => FftNormalization::None,
+        FftNormalization::Ortho => FftNormalization::Ortho,
+    }
+}
+
+/// N-dimensional FFT of a Hermitian-symmetric signal. The final listed axis
+/// is supplied one-sided; explicit lengths distinguish odd and even signals.
+pub fn hfftn<R: Runtime>(real: &RudaTensor<R>, imag: &RudaTensor<R>,
+    axes: &[usize], lengths: &[usize], norm: FftNormalization)
+    -> Result<RudaTensor<R>, LaunchError> {
+    let conjugated = crate::spectral_layout::scale(imag, -1.0, None)?;
+    irfftn(real, &conjugated, axes, lengths, reverse_normalization(norm))
+}
+
+/// Inverse Hermitian transform, returning the compressed final signal axis.
+pub fn ihfftn<R: Runtime>(signal: &RudaTensor<R>, axes: &[usize], lengths: &[usize],
+    norm: FftNormalization) -> Result<(RudaTensor<R>, RudaTensor<R>), LaunchError> {
+    let (real, imag) = rfftn(signal, axes, lengths, reverse_normalization(norm))?;
+    Ok((real, crate::spectral_layout::scale(&imag, -1.0, None)?))
+}
+
+pub fn hfft2<R: Runtime>(real: &RudaTensor<R>, imag: &RudaTensor<R>, axes: [usize;2],
+    lengths: [usize;2], norm: FftNormalization) -> Result<RudaTensor<R>,LaunchError> {
+    hfftn(real,imag,&axes,&lengths,norm)
+}
+pub fn ihfft2<R: Runtime>(signal: &RudaTensor<R>, axes: [usize;2], lengths: [usize;2],
+    norm: FftNormalization) -> Result<(RudaTensor<R>,RudaTensor<R>),LaunchError> {
+    ihfftn(signal,&axes,&lengths,norm)
+}
+
+pub fn hfft<R: Runtime>(real: &RudaTensor<R>, imag: &RudaTensor<R>, axis: usize,
+    length: usize, norm: FftNormalization) -> Result<RudaTensor<R>,LaunchError> {
+    hfftn(real,imag,&[axis],&[length],norm)
+}
+pub fn ihfft<R: Runtime>(signal: &RudaTensor<R>, axis: usize, length: usize,
+    norm: FftNormalization) -> Result<(RudaTensor<R>,RudaTensor<R>),LaunchError> {
+    ihfftn(signal,&[axis],&[length],norm)
 }
 
 fn copy<F: HostFloat, R: Runtime>(input: &RudaTensor<R>, output: &RudaTensor<R>, scale: f64) {

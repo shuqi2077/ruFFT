@@ -17,3 +17,7 @@ pub mod double;
 #[cfg(feature = "tensor")]
 #[allow(unsafe_code)]
 pub mod multidim;
+
+#[cfg(feature = "tensor")]
+#[allow(unsafe_code)]
+pub mod spectral_layout;
