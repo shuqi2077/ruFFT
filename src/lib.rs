@@ -16,6 +16,10 @@ pub mod double;
 
 #[cfg(feature = "tensor")]
 #[allow(unsafe_code)]
+pub mod half;
+
+#[cfg(feature = "tensor")]
+#[allow(unsafe_code)]
 pub mod multidim;
 
 #[cfg(feature = "tensor")]

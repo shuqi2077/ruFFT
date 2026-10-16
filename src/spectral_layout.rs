@@ -11,9 +11,9 @@ trait HostFloat: Float + RudaElement { fn scalar(value: f64) -> Self; }
 impl HostFloat for f32 { fn scalar(value: f64) -> Self { value as f32 } }
 impl HostFloat for f64 { fn scalar(value: f64) -> Self { value } }
 fn check<R: Runtime>(x: &RudaTensor<R>, shape: &Shape) -> Result<usize, LaunchError> {
-    if !matches!(x.dtype, DType::F32 | DType::F64) || x.qparams.is_some()
+    if !matches!(x.dtype, DType::F16 | DType::F32 | DType::F64) || x.qparams.is_some()
         || shape.len() != x.meta.num_dims() {
-        return Err(invalid("spectral layout requires same-rank F32/F64 tensors"));
+        return Err(invalid("spectral layout requires same-rank F16/F32/F64 tensors"));
     }
     shape.iter().try_fold(1usize, |n, &s| n.checked_mul(s))
         .filter(|&n| n <= u32::MAX as usize)
@@ -27,6 +27,8 @@ pub fn resize<R: Runtime>(input: &RudaTensor<R>, shape: Shape) -> Result<RudaTen
     if count > 0 {
         let d = RudaDim::new(input.client.properties(), count);
         match input.dtype {
+            DType::F16 => resize_kernel::launch::<f16,R>(&input.client, calculate_ruda_count_elemwise(&input.client,count,d),d,
+                input.clone().into_tensor_arg(),out.clone().into_tensor_arg()),
             DType::F32 => resize_kernel::launch::<f32,R>(&input.client, calculate_ruda_count_elemwise(&input.client,count,d),d,
                 input.clone().into_tensor_arg(),out.clone().into_tensor_arg()),
             DType::F64 => resize_kernel::launch::<f64,R>(&input.client, calculate_ruda_count_elemwise(&input.client,count,d),d,
@@ -43,6 +45,7 @@ pub fn zeros<R:Runtime>(like:&RudaTensor<R>,shape:Shape)->Result<RudaTensor<R>,L
         let d=RudaDim::new(like.client.properties(),count);
         let grid=calculate_ruda_count_elemwise(&like.client,count,d);
         match like.dtype {
+            DType::F16=>zero_kernel::launch::<f16,R>(&like.client,grid,d,output.clone().into_array_arg()),
             DType::F32=>zero_kernel::launch::<f32,R>(&like.client,grid,d,output.clone().into_array_arg()),
             DType::F64=>zero_kernel::launch::<f64,R>(&like.client,grid,d,output.clone().into_array_arg()),
             _=>unreachable!(),
@@ -64,10 +67,12 @@ pub fn scale<R: Runtime>(input: &RudaTensor<R>, factor: f64,
     if count>0 {
         let d=RudaDim::new(input.client.properties(),count);
         match input.dtype {
-            DType::F32 => scale_kernel::launch::<f32,R>(&input.client,calculate_ruda_count_elemwise(&input.client,count,d),d,
+            DType::F16 => scale_kernel::launch::<f16,f32,R>(&input.client,calculate_ruda_count_elemwise(&input.client,count,d),d,
+                input.clone().into_tensor_arg(),out.clone().into_array_arg(),factor as f32,weight as f32,axis,n,interior_axis.is_some()),
+            DType::F32 => scale_kernel::launch::<f32,f32,R>(&input.client,calculate_ruda_count_elemwise(&input.client,count,d),d,
                 input.clone().into_tensor_arg(),out.clone().into_array_arg(),<f32 as HostFloat>::scalar(factor),
                 <f32 as HostFloat>::scalar(weight),axis,n,interior_axis.is_some()),
-            DType::F64 => scale_kernel::launch::<f64,R>(&input.client,calculate_ruda_count_elemwise(&input.client,count,d),d,
+            DType::F64 => scale_kernel::launch::<f64,f64,R>(&input.client,calculate_ruda_count_elemwise(&input.client,count,d),d,
                 input.clone().into_tensor_arg(),out.clone().into_array_arg(),<f64 as HostFloat>::scalar(factor),
                 <f64 as HostFloat>::scalar(weight),axis,n,interior_axis.is_some()),
             _=>unreachable!(),
@@ -86,6 +91,8 @@ pub fn real_spectrum_imaginary<R:Runtime>(input:&RudaTensor<R>,axis:usize,n:usiz
         let dim=RudaDim::new(input.client.properties(),count);
         let grid=calculate_ruda_count_elemwise(&input.client,count,dim);
         match input.dtype {
+            DType::F16=>boundary_kernel::launch::<f16,R>(&input.client,grid,dim,
+                input.clone().into_tensor_arg(),output.clone().into_array_arg(),axis,n),
             DType::F32=>boundary_kernel::launch::<f32,R>(&input.client,grid,dim,
                 input.clone().into_tensor_arg(),output.clone().into_array_arg(),axis,n),
             DType::F64=>boundary_kernel::launch::<f64,R>(&input.client,grid,dim,
@@ -110,6 +117,8 @@ pub fn shift<R: Runtime>(input:&RudaTensor<R>,axes:&[usize],inverse:bool)
             let d=RudaDim::new(value.client.properties(),count);
             let source_shift=if inverse { n/2 } else { n-n/2 };
             match value.dtype {
+                DType::F16=>shift_kernel::launch::<f16,R>(&value.client,calculate_ruda_count_elemwise(&value.client,count,d),d,
+                    value.clone().into_tensor_arg(),out.clone().into_tensor_arg(),axis,source_shift),
                 DType::F32=>shift_kernel::launch::<f32,R>(&value.client,calculate_ruda_count_elemwise(&value.client,count,d),d,
                     value.clone().into_tensor_arg(),out.clone().into_tensor_arg(),axis,source_shift),
                 DType::F64=>shift_kernel::launch::<f64,R>(&value.client,calculate_ruda_count_elemwise(&value.client,count,d),d,
@@ -135,8 +144,8 @@ pub fn rfftfreq<R:Runtime>(like:&RudaTensor<R>,n:usize,distance:f64)->Result<Rud
 }
 fn frequency_tensor<R:Runtime>(like:&RudaTensor<R>,n:usize,distance:f64,onesided:bool)
     ->Result<RudaTensor<R>,LaunchError> {
-    if n>u32::MAX as usize || !matches!(like.dtype,DType::F32|DType::F64) {
-        return Err(invalid("frequency tensor requires U32 length and F32/F64 dtype"));
+    if n>u32::MAX as usize || !matches!(like.dtype,DType::F16|DType::F32|DType::F64) {
+        return Err(invalid("frequency tensor requires U32 length and F16/F32/F64 dtype"));
     }
     let output=empty_device_contiguous_dtype(like.client.clone(),like.device.clone(),
         Shape::from([if onesided {n/2+1} else {n}]),like.dtype);
@@ -155,9 +164,11 @@ pub fn frequencies<R:Runtime>(output:&RudaTensor<R>,n:usize,distance:f64,oneside
     let dim=RudaDim::new(output.client.properties(),count);
     let grid=calculate_ruda_count_elemwise(&output.client,count,dim);
     match output.dtype {
-        DType::F32=>frequency_kernel::launch::<f32,R>(&output.client,grid,dim,output.clone().into_array_arg(),
+        DType::F16=>frequency_kernel::launch::<f16,f32,R>(&output.client,grid,dim,output.clone().into_array_arg(),
+            (1.0/(n as f64*distance)) as f32,n,onesided),
+        DType::F32=>frequency_kernel::launch::<f32,f32,R>(&output.client,grid,dim,output.clone().into_array_arg(),
             <f32 as HostFloat>::scalar(1.0/(n as f64*distance)),n,onesided),
-        DType::F64=>frequency_kernel::launch::<f64,R>(&output.client,grid,dim,output.clone().into_array_arg(),
+        DType::F64=>frequency_kernel::launch::<f64,f64,R>(&output.client,grid,dim,output.clone().into_array_arg(),
             <f64 as HostFloat>::scalar(1.0/(n as f64*distance)),n,onesided),
         _=>unreachable!(),
     }
@@ -196,7 +207,7 @@ fn boundary_kernel<F:Float>(input:&Tensor<F>,output:&mut Array<F>,#[comptime] ax
     output[pos]=if bin==0 || (n%2==0 && bin==n/2) {F::new(0.0)} else {input[offset]};
 }
 #[ruda(launch)]
-fn scale_kernel<F:Float + RudaElement>(input:&Tensor<F>,output:&mut Array<F>,factor:F,weight:F,
+fn scale_kernel<S:Float,F:Float + RudaElement>(input:&Tensor<S>,output:&mut Array<S>,factor:F,weight:F,
     #[comptime] axis:usize,#[comptime] n:usize,#[comptime] interior:bool) {
     let pos=ABSOLUTE_POS;
     if pos>=output.len() { terminate!(); }
@@ -209,7 +220,7 @@ fn scale_kernel<F:Float + RudaElement>(input:&Tensor<F>,output:&mut Array<F>,fac
     }
     let mut multiplier=factor;
     if interior && bin>0 && bin<=(n-1)/2 { multiplier*=weight; }
-    output[pos]=input[offset]*multiplier;
+    output[pos]=S::cast_from(F::cast_from(input[offset])*multiplier);
 }
 #[ruda(launch)]
 fn shift_kernel<F:Float>(input:&Tensor<F>,output:&mut Tensor<F>,#[comptime] axis:usize,#[comptime] shift:usize) {
@@ -225,9 +236,9 @@ fn shift_kernel<F:Float>(input:&Tensor<F>,output:&mut Tensor<F>,#[comptime] axis
     output[pos]=input[offset];
 }
 #[ruda(launch)]
-fn frequency_kernel<F:Float + RudaElement>(output:&mut Array<F>,step:F,#[comptime] n:usize,#[comptime] onesided:bool) {
+fn frequency_kernel<S:Float,F:Float + RudaElement>(output:&mut Array<S>,step:F,#[comptime] n:usize,#[comptime] onesided:bool) {
     let k=ABSOLUTE_POS;
     if k>=output.len() { terminate!(); }
-    let frequency=if onesided || k<(n+1)/2 { F::cast_from(k) } else { -F::cast_from(n-k) };
-    output[k]=frequency*step;
+    let frequency=if onesided || k<(n+1)/2 { S::cast_from(k) } else { -S::cast_from(n-k) };
+    output[k]=S::cast_from(F::cast_from(frequency)*step);
 }

@@ -1,4 +1,4 @@
-use crate::{FftMode, RealFftPlan, double::DoubleFftPlan};
+use crate::{FftMode, RealFftPlan, double::DoubleFftPlan, half::HalfFftPlan};
 use ruda_core::tensor::{DType, Shape};
 use ruda_kernel::dsl as kernel_dsl;
 use ruda_kernel::dsl::{backtrace::BackTrace, calculate_ruda_count_elemwise, prelude::*};
@@ -41,10 +41,10 @@ fn invalid(s: &str) -> LaunchError {
 fn allocate<R: Runtime>(like: &RudaTensor<R>, shape: Shape) -> RudaTensor<R> {
     empty_device_contiguous_dtype(like.client.clone(), like.device.clone(), shape, like.dtype)
 }
-fn validate<R: Runtime>(t: &RudaTensor<R>) -> Result<(), LaunchError> {
-    if !matches!(t.dtype, DType::F32 | DType::F64) || t.qparams.is_some() || t.meta.num_dims() == 0
+pub(crate) fn validate<R: Runtime>(t: &RudaTensor<R>) -> Result<(), LaunchError> {
+    if !matches!(t.dtype, DType::F16 | DType::F32 | DType::F64) || t.qparams.is_some() || t.meta.num_dims() == 0
     {
-        return Err(invalid("FFT requires non-scalar unquantized F32/F64"));
+        return Err(invalid("FFT requires non-scalar unquantized F16/F32/F64"));
     }
     let count = t
         .meta
@@ -63,7 +63,8 @@ fn validate<R: Runtime>(t: &RudaTensor<R>) -> Result<(), LaunchError> {
                 (s - 1).checked_mul(st).and_then(|k| n.checked_add(k))
             })
             .and_then(|n| n.checked_add(1))
-            .and_then(|n| n.checked_mul(if t.dtype == DType::F64 { 8 } else { 4 }))
+            .filter(|&n| t.dtype != DType::F16 || n <= u32::MAX as usize)
+            .and_then(|n| n.checked_mul(if t.dtype == DType::F64 {8} else if t.dtype == DType::F16 {2} else {4}))
             .ok_or_else(|| invalid("FFT tensor span overflow"))?;
         let available = t
             .handle
@@ -79,6 +80,7 @@ fn validate<R: Runtime>(t: &RudaTensor<R>) -> Result<(), LaunchError> {
 }
 
 enum Axis<R: Runtime> {
+    Half(HalfFftPlan<R>),
     Single {
         plan: RealFftPlan<R>,
         half: Option<[RudaTensor<R>; 4]>,
@@ -132,6 +134,9 @@ impl<R: Runtime> NdFftPlan<R> {
             .iter()
             .try_fold(1usize, |n, &s| n.checked_mul(s))
             .ok_or_else(|| invalid("multidimensional transform volume overflow"))?;
+        if like.dtype == DType::F16 && lengths.iter().any(|n| !n.is_power_of_two()) {
+            return Err(invalid("half FFT requires power-of-two lengths on every transform axis"));
+        }
         let inverse = matches!(kind, NdFftKind::ComplexInverse | NdFftKind::RealInverse);
         let real = matches!(kind, NdFftKind::RealForward | NdFftKind::RealInverse);
         let last = axes.len() - 1;
@@ -163,7 +168,7 @@ impl<R: Runtime> NdFftPlan<R> {
         // Every complex stage is unnormalized. Existing IRFFT normalizes its
         // own axis, so compensate once at the final requested normalization.
         let scale = scale
-            * if kind == NdFftKind::RealInverse {
+            * if kind == NdFftKind::RealInverse && like.dtype != DType::F16 {
                 lengths[last] as f64
             } else {
                 1.0
@@ -196,7 +201,9 @@ impl<R: Runtime> NdFftPlan<R> {
                 allocate(&model, output_shape.clone()),
                 allocate(&model, output_shape),
             ];
-            let plan = if like.dtype == DType::F64 {
+            let plan = if like.dtype == DType::F16 {
+                Axis::Half(HalfFftPlan::new(&model, axis, length, if inverse {FftMode::Inverse} else {FftMode::Forward})?)
+            } else if like.dtype == DType::F64 {
                 Axis::Double(DoubleFftPlan::new(
                     &model,
                     axis,
@@ -269,10 +276,11 @@ impl<R: Runtime> NdFftPlan<R> {
                     .iter()
                     .map(|t| {
                         t.meta.shape().iter().product::<usize>()
-                            * if self.dtype == DType::F64 { 8 } else { 4 }
+                            * if self.dtype == DType::F64 {8} else if self.dtype == DType::F16 {2} else {4}
                     })
                     .sum::<usize>()
                     + match &s.plan {
+                        Axis::Half(p) => p.retained_bytes(),
                         Axis::Double(p) => p.retained_bytes(),
                         Axis::Single { plan, half } => {
                             plan.retained_bytes()
@@ -357,6 +365,9 @@ impl<R: Runtime> NdFftPlan<R> {
                 return Err(invalid("FFT stage shape mismatch"));
             }
             match &mut stage.plan {
+                Axis::Half(plan) => {
+                    plan.run(&re, im.as_ref(), &stage.output[0], &stage.output[1], stage.real)?;
+                }
                 Axis::Double(plan) => {
                     let pair = if stage.real {
                         plan.run(
@@ -378,12 +389,12 @@ impl<R: Runtime> NdFftPlan<R> {
                             false,
                         )?
                     };
-                    copy::<f64, R>(&pair.0, &stage.output[0], 1.0);
+                    copy::<f64, f64, R>(&pair.0, &stage.output[0], 1.0);
                     if stage.real && !inverse {
                         let imag = crate::spectral_layout::real_spectrum_imaginary(&pair.1,stage.axis,stage.length)?;
-                        copy::<f64, R>(&imag, &stage.output[1], 1.0);
+                        copy::<f64, f64, R>(&imag, &stage.output[1], 1.0);
                     } else {
-                        copy::<f64, R>(&pair.1, &stage.output[1], 1.0);
+                        copy::<f64, f64, R>(&pair.1, &stage.output[1], 1.0);
                     }
                 }
                 Axis::Single { plan, half } => {
@@ -450,13 +461,17 @@ impl<R: Runtime> NdFftPlan<R> {
         let out_re = allocate(&re, re.meta.shape().clone());
         let out_im = allocate(&re, re.meta.shape().clone());
         match self.dtype {
+            DType::F16 => {
+                copy::<f16, f32, R>(&re, &out_re, self.scale);
+                copy::<f16, f32, R>(im.as_ref().unwrap(), &out_im, self.scale);
+            }
             DType::F32 => {
-                copy::<f32, R>(&re, &out_re, self.scale);
-                copy::<f32, R>(im.as_ref().unwrap(), &out_im, self.scale);
+                copy::<f32, f32, R>(&re, &out_re, self.scale);
+                copy::<f32, f32, R>(im.as_ref().unwrap(), &out_im, self.scale);
             }
             DType::F64 => {
-                copy::<f64, R>(&re, &out_re, self.scale);
-                copy::<f64, R>(im.as_ref().unwrap(), &out_im, self.scale);
+                copy::<f64, f64, R>(&re, &out_re, self.scale);
+                copy::<f64, f64, R>(im.as_ref().unwrap(), &out_im, self.scale);
             }
             _ => unreachable!(),
         }
@@ -568,13 +583,13 @@ pub fn ihfft<R: Runtime>(signal: &RudaTensor<R>, axis: usize, length: usize,
     ihfftn(signal,&[axis],&[length],norm)
 }
 
-fn copy<F: HostFloat, R: Runtime>(input: &RudaTensor<R>, output: &RudaTensor<R>, scale: f64) {
+fn copy<S: Float + RudaElement, F: HostFloat, R: Runtime>(input: &RudaTensor<R>, output: &RudaTensor<R>, scale: f64) {
     let count = output.meta.shape().iter().product::<usize>();
     if count == 0 {
         return;
     }
     let d = RudaDim::new(input.client.properties(), count);
-    copy_scaled::launch::<F, R>(
+    copy_scaled::launch::<S, F, R>(
         &input.client,
         calculate_ruda_count_elemwise(&input.client, count, d),
         d,
@@ -597,7 +612,7 @@ fn zero<F: Float + RudaElement, R: Runtime>(output: &RudaTensor<R>) {
     );
 }
 #[ruda(launch)]
-fn copy_scaled<F: Float + RudaElement>(input: &Tensor<F>, output: &mut Array<F>, scale: F) {
+fn copy_scaled<S: Float, F: Float + RudaElement>(input: &Tensor<S>, output: &mut Array<S>, scale: F) {
     let pos = ABSOLUTE_POS;
     if pos >= output.len() {
         terminate!();
@@ -611,7 +626,7 @@ fn copy_scaled<F: Float + RudaElement>(input: &Tensor<F>, output: &mut Array<F>,
         rem /= input.shape(dim);
         offset += coord * input.stride(dim);
     }
-    output[pos] = input[offset] * scale;
+    output[pos] = S::cast_from(F::cast_from(input[offset]) * scale);
 }
 #[ruda(launch)]
 fn zero_array<F: Float>(out: &mut Array<F>) {
