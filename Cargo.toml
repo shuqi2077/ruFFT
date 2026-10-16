@@ -36,7 +36,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/shuqi2077/RUDA/tree/main/ruFFT"
 
 [features]
-tensor = ["ruda-kernel/device-tensor", "dep:ruda-core", "ruda-core/tensor-host-data", "dep:ruprim"]
+tensor = ["ruda-kernel/device-tensor", "dep:ruda-core", "ruda-core/tensor-host-data", "dep:ruprim", "dep:half"]
 cpu-reference = [
     "dep:num-complex",
     "dep:ruda-test-utils",
@@ -96,6 +96,11 @@ features = ["frontend", "library"]
 [dependencies.ruda-core]
 path = "../ruda-core"
 version = "0.1.10"
+default-features = false
+optional = true
+
+[dependencies.half]
+version = "=2.7.1"
 default-features = false
 optional = true
 
