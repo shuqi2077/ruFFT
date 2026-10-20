@@ -29,26 +29,26 @@ cargo build --release --locked -p ruda-fft --no-default-features --features std,
 
 ## Dokumentation
 
-- [Benutzerhandbuch](../../../docs/de/libraries/rufft.md)
-- [Umgebungseinrichtung](../../../docs/de/getting-started.md)
+- [Benutzerhandbuch](../../../../docs/de/libraries/rufft.md)
+- [Umgebungseinrichtung](../../../../docs/de/getting-started.md)
 - [Cargo-Funktionen](../../Cargo.toml) · [Modulexporte](../../src/lib.rs)
 
 ## ruFFT Benutzerhandbuch
 
-[Computerbibliotheken](../../../docs/de/libraries/README.md) · [Tensor-Framework](../../../docs/de/tensor-framework.md) · [中文](../zh/README.md)
+[Computerbibliotheken](../../../../docs/de/libraries/README.md) · [Tensor-Framework](../../../../docs/de/tensor-framework.md) · [中文](../zh/README.md)
 
 ruFFT berechnet Realsignal-FFTs und inverse Transformationen auf dem Gerät. Die `rufft::tensor`-Schnittstelle weist Ausgänge zu; Verwenden Sie `rfft_launch` und `irfft_launch`, wenn Sie Gerätebindungen direkt verwalten.
 
 ### 1. Abhängigkeiten konfigurieren
 
-Das Cargo-Paket ist `ruFFT`; Sein Rust-Importname ist `rufft`. Die Funktion `tensor` ermöglicht Geräte-Tensor-Schnittstellen. Diese Konfiguration platziert das Anwendungsverzeichnis neben dem `RUDA`-Quellverzeichnis. Informationen zum NVIDIA-Setup finden Sie unter [Erste Schritte](../../../docs/de/getting-started.md).
+Das Cargo-Paket ist `ruFFT`; Sein Rust-Importname ist `rufft`. Die Funktion `tensor` ermöglicht Geräte-Tensor-Schnittstellen. Diese Konfiguration platziert das Anwendungsverzeichnis neben dem `RUDA`-Quellverzeichnis. Informationen zum NVIDIA-Setup finden Sie unter [Erste Schritte](../../../../docs/de/getting-started.md).
 
 ```toml
 [dependencies]
-rufft = { package = "ruFFT", path = "../RUDA/ruFFT", default-features = false, features = ["std", "tensor"] }
-ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+rufft = { package = "ruFFT", path = "../RUDA/crates/ruFFT", default-features = false, features = ["std", "tensor"] }
+ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. Vorwärts- und Rücktransformationen

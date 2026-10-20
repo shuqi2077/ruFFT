@@ -29,6 +29,6 @@ Default features: `std`, `simd`, `rayon`.
 
 ## Links
 
-- [Package source](https://github.com/shuqi2077/RUDA/tree/main/ruFFT/host/src)
-- [Cargo manifest](https://github.com/shuqi2077/RUDA/blob/main/ruFFT/host/Cargo.toml)
+- [Package source](https://github.com/shuqi2077/RUDA/tree/main/crates/ruFFT/host/src)
+- [Cargo manifest](https://github.com/shuqi2077/RUDA/blob/main/crates/ruFFT/host/Cargo.toml)
 - [Ruda guide](https://github.com/shuqi2077/RUDA/blob/main/docs/en/libraries/rufft.md)

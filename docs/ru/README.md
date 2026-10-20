@@ -29,26 +29,26 @@ cargo build --release --locked -p ruda-fft --no-default-features --features std,
 
 ## Документация
 
-- [Руководство пользователя](../../../docs/ru/libraries/rufft.md)
-- [Настройка среды](../../../docs/ru/getting-started.md)
+- [Руководство пользователя](../../../../docs/ru/libraries/rufft.md)
+- [Настройка среды](../../../../docs/ru/getting-started.md)
 - [Функции Cargo](../../Cargo.toml) · [Экспорт модулей](../../src/lib.rs)
 
 ## ruFFT Руководство пользователя
 
-[Вычислительные библиотеки](../../../docs/ru/libraries/README.md) · [Тензорная платформа](../../../docs/ru/tensor-framework.md) · [中文](../zh/README.md)
+[Вычислительные библиотеки](../../../../docs/ru/libraries/README.md) · [Тензорная платформа](../../../../docs/ru/tensor-framework.md) · [中文](../zh/README.md)
 
 ruFFT вычисляет БПФ и обратные преобразования реального сигнала на устройстве. Интерфейс `rufft::tensor` распределяет выходы; используйте `rfft_launch` и `irfft_launch` при непосредственном управлении привязками устройств.
 
 ### 1. Настройте зависимости
 
-Пакет Cargo — `ruFFT`; его имя для импорта в Rust — `rufft`. Функция `tensor` включает тензорные интерфейсы устройств. В этой конфигурации каталог приложения размещается рядом с исходным каталогом `RUDA`. См. раздел [Начало работы](../../../docs/ru/getting-started.md) для настройки NVIDIA.
+Пакет Cargo — `ruFFT`; его имя для импорта в Rust — `rufft`. Функция `tensor` включает тензорные интерфейсы устройств. В этой конфигурации каталог приложения размещается рядом с исходным каталогом `RUDA`. См. раздел [Начало работы](../../../../docs/ru/getting-started.md) для настройки NVIDIA.
 
 ```toml
 [dependencies]
-rufft = { package = "ruFFT", path = "../RUDA/ruFFT", default-features = false, features = ["std", "tensor"] }
-ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+rufft = { package = "ruFFT", path = "../RUDA/crates/ruFFT", default-features = false, features = ["std", "tensor"] }
+ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. Прямое и обратное преобразование
