@@ -29,26 +29,26 @@ cargo build --release --locked -p ruda-fft --no-default-features --features std,
 
 ## ドキュメント
 
-- [ユーザーガイド](../../../../docs/ja/libraries/rufft.md)
-- [環境設定](../../../../docs/ja/getting-started.md)
+- [ユーザーガイド](../../../docs/ja/libraries/rufft.md)
+- [環境設定](../../../docs/ja/getting-started.md)
 - [Cargo 機能](../../Cargo.toml) · [モジュール エクスポート](../../src/lib.rs)
 
 ## ruFFT ユーザーガイド
 
-[計算ライブラリ](../../../../docs/ja/libraries/README.md) · [Tensor フレームワーク](../../../../docs/ja/tensor-framework.md) · [中文](../zh/README.md)
+[計算ライブラリ](../../../docs/ja/libraries/README.md) · [Tensor フレームワーク](../../../docs/ja/tensor-framework.md) · [中文](../zh/README.md)
 
 ruFFT は、デバイス上で実信号 FFT と逆変換を計算します。 `rufft::tensor` インターフェイスは出力を割り当てます。デバイス バインディングを直接管理する場合は、`rfft_launch` および `irfft_launch` を使用します。
 
 ### 1. 依存関係を構成する
 
-Cargo パッケージは `ruFFT` です。 Rust インポート名は `rufft` です。機能 `tensor` により、デバイス テンソル インターフェイスが有効になります。この構成では、アプリケーション ディレクトリが `RUDA` ソース ディレクトリの横に配置されます。 NVIDIA のセットアップについては、[はじめに](../../../../docs/ja/getting-started.md) を参照してください。
+Cargo パッケージは `ruFFT` です。 Rust インポート名は `rufft` です。機能 `tensor` により、デバイス テンソル インターフェイスが有効になります。この構成では、アプリケーション ディレクトリが `RUDA` ソース ディレクトリの横に配置されます。 NVIDIA のセットアップについては、[はじめに](../../../docs/ja/getting-started.md) を参照してください。
 
 ```toml
 [dependencies]
-rufft = { package = "ruFFT", path = "../RUDA/crates/ruFFT", default-features = false, features = ["std", "tensor"] }
-ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
+rufft = { package = "ruFFT", path = "../RUDA/ruFFT", default-features = false, features = ["std", "tensor"] }
+ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. 順変換と逆変換
