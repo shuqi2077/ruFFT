@@ -68,7 +68,7 @@ fn measure(client: &Client, run: impl Fn() + Send + Sync) -> (f64, f64) {
     for _ in 0..11 {
         let start = Instant::now();
         let (_, duration) = client.profile(&run, "fft").unwrap();
-        interval.push(block_on(duration.resolve()).duration().as_secs_f64() * 1e6);
+        interval.push(block_on(duration.resolve()).expect("FFT profiling window was not measured").duration().as_secs_f64() * 1e6);
         host.push(start.elapsed().as_secs_f64() * 1e6);
     }
     interval.sort_by(f64::total_cmp);
