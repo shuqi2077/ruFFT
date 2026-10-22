@@ -46,7 +46,7 @@ Cargo package 名为 `ruFFT`，Rust 导入名为 `rufft`。`tensor` feature 启�
 rufft = { package = "ruFFT", path = "../RUDA/ruFFT", default-features = false, features = ["std", "tensor"] }
 ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
 ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver/cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. 正变换与逆变换
