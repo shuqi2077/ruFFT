@@ -11,6 +11,7 @@ pub(super) fn irfft_kernel<F: Float>(
     #[comptime] log2_n: usize,
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
+    #[comptime] warp_stages: bool,
 ) {
     let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
@@ -50,6 +51,7 @@ pub(super) fn irfft_kernel<F: Float>(
         log2_n,
         threads_per_ruda,
         FftMode::Inverse,
+        warp_stages,
     );
 
     let scale = F::new(1.0) / F::cast_from(n_fft);

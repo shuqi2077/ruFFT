@@ -169,7 +169,7 @@ pub(crate) fn cfft_inverse_product_with_scratch<R: Runtime>(
             spectrum.0.into_tensor_arg(), spectrum.1.into_tensor_arg(),
             bindings.output_re.into_tensor_arg(), bindings.output_im.into_tensor_arg(),
             count as u32, n_fft, n_fft.trailing_zeros() as usize, threads, dim,
-            FftMode::Inverse);
+            FftMode::Inverse, crate::fft::fft_parallel::warp_stages(client));
         Ok(())
     } else {
         cfft_four_step_launch(client, bindings, dtype, plan, scratch, Some(spectrum))
@@ -201,6 +201,7 @@ fn cfft_shared_launch<R: Runtime>(
         threads_per_ruda,
         plan.dim,
         plan.fft_mode,
+        crate::fft::fft_parallel::warp_stages(client),
     );
     Ok(())
 }
@@ -266,6 +267,7 @@ fn cfft_four_step_launch<R: Runtime>(
             threads_per_ruda,
             plan.dim,
             plan.fft_mode,
+            crate::fft::fft_parallel::warp_stages(client),
         );
         } else {
         cfft_four_step_radix1_kernel::launch::<f32, R>(
@@ -283,6 +285,7 @@ fn cfft_four_step_launch<R: Runtime>(
             threads_per_ruda,
             plan.dim,
             plan.fft_mode,
+            crate::fft::fft_parallel::warp_stages(client),
         );
         }
     }
@@ -309,6 +312,7 @@ fn cfft_four_step_launch<R: Runtime>(
             threads_per_ruda,
             plan.dim,
             plan.fft_mode,
+            crate::fft::fft_parallel::warp_stages(client),
         );
     }
 

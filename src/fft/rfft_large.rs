@@ -91,6 +91,7 @@ pub(crate) fn rfft_large_launch<R: Runtime>(
             m.trailing_zeros() as usize,
             threads,
             dim,
+            crate::fft::fft_parallel::warp_stages(client),
         );
         return Ok(());
     }
@@ -211,6 +212,7 @@ pub(crate) fn irfft_large_launch<R: Runtime>(
             m.trailing_zeros() as usize,
             threads,
             dim,
+            crate::fft::fft_parallel::warp_stages(client),
         );
         return Ok(());
     }

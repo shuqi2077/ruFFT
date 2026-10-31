@@ -12,6 +12,7 @@ pub(super) fn cfft_shared_kernel<F: Float>(
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
+    #[comptime] warp_stages: bool,
 ) {
     let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
@@ -44,6 +45,7 @@ pub(super) fn cfft_shared_kernel<F: Float>(
         log2_n,
         threads_per_ruda,
         fft_mode,
+        warp_stages,
     );
 
     let mut k = UNIT_POS as usize;
@@ -67,6 +69,7 @@ pub(super) fn cfft_four_step_radix1_kernel<F: Float>(
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
+    #[comptime] warp_stages: bool,
 ) {
     let ruda_pos = RUDA_POS;
     if ruda_pos >= num_rudas as usize {
@@ -102,6 +105,7 @@ pub(super) fn cfft_four_step_radix1_kernel<F: Float>(
         log2_n1,
         threads_per_ruda,
         fft_mode,
+        warp_stages,
     );
 
     // Post-twiddle and strided write. W_N^{k1 * n2} with the total-N phase
@@ -135,6 +139,7 @@ pub(super) fn cfft_four_step_radix2_kernel<F: Float>(
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
+    #[comptime] warp_stages: bool,
 ) {
     let ruda_pos = RUDA_POS;
     if ruda_pos >= num_rudas as usize {
@@ -166,6 +171,7 @@ pub(super) fn cfft_four_step_radix2_kernel<F: Float>(
         log2_n2,
         threads_per_ruda,
         fft_mode,
+        warp_stages,
     );
 
     let mut k2 = UNIT_POS as usize;
@@ -224,6 +230,7 @@ pub(super) fn cfft_product_shared_kernel<F: Float>(
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
+    #[comptime] warp_stages: bool,
 ) {
     let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
@@ -263,6 +270,7 @@ pub(super) fn cfft_product_shared_kernel<F: Float>(
         log2_n,
         threads_per_ruda,
         fft_mode,
+        warp_stages,
     );
 
     let mut k = UNIT_POS as usize;
@@ -290,6 +298,7 @@ pub(super) fn cfft_product_radix1_kernel<F: Float>(
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
     #[comptime] fft_mode: FftMode,
+    #[comptime] warp_stages: bool,
 ) {
     let ruda_pos = RUDA_POS;
     if ruda_pos >= num_rudas as usize {
@@ -332,6 +341,7 @@ pub(super) fn cfft_product_radix1_kernel<F: Float>(
         log2_n1,
         threads_per_ruda,
         fft_mode,
+        warp_stages,
     );
 
     // Post-twiddle and strided write. W_N^{k1 * n2} with the total-N phase

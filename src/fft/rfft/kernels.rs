@@ -11,6 +11,7 @@ pub(super) fn rfft_kernel<F: Float>(
     #[comptime] log2_n: usize,
     #[comptime] threads_per_ruda: usize,
     #[comptime] dim: usize,
+    #[comptime] warp_stages: bool,
 ) {
     let window_index = RUDA_POS;
     if (window_index as u32) >= num_windows {
@@ -46,6 +47,7 @@ pub(super) fn rfft_kernel<F: Float>(
         log2_n,
         threads_per_ruda,
         FftMode::Forward,
+        warp_stages,
     );
 
     let n_freq = comptime![n_fft / 2 + 1];

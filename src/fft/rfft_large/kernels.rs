@@ -12,6 +12,7 @@ pub(super) fn rfft_fused_kernel<F: Float>(
     #[comptime] log2_m: usize,
     #[comptime] threads: usize,
     #[comptime] dim: usize,
+    #[comptime] warp_stages: bool,
 ) {
     let window = RUDA_POS;
     if window >= num_windows as usize {
@@ -36,7 +37,7 @@ pub(super) fn rfft_fused_kernel<F: Float>(
         k += threads;
     }
     sync_ruda();
-    fft_butterfly_parallel(&mut re, &mut im, m, log2_m, threads, FftMode::Forward);
+    fft_butterfly_parallel(&mut re, &mut im, m, log2_m, threads, FftMode::Forward, warp_stages);
     let mut k = UNIT_POS as usize;
     while k < m + 1 {
         if k == 0 {
@@ -77,6 +78,7 @@ pub(super) fn irfft_fused_kernel<F: Float>(
     #[comptime] log2_m: usize,
     #[comptime] threads: usize,
     #[comptime] dim: usize,
+    #[comptime] warp_stages: bool,
 ) {
     let window = RUDA_POS;
     if window >= num_windows as usize {
@@ -120,7 +122,7 @@ pub(super) fn irfft_fused_kernel<F: Float>(
         k += threads;
     }
     sync_ruda();
-    fft_butterfly_parallel(&mut re, &mut im, m, log2_m, threads, FftMode::Inverse);
+    fft_butterfly_parallel(&mut re, &mut im, m, log2_m, threads, FftMode::Inverse, warp_stages);
     let scale = F::new(1.0) / F::cast_from(m);
     let mut k = UNIT_POS as usize;
     while k < m {

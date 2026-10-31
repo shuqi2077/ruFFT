@@ -173,6 +173,7 @@ pub(crate) fn rfft_launch_padded_with_units<R: Runtime>(
         log2_n,
         threads_per_ruda,
         dim,
+        crate::fft::fft_parallel::warp_stages(client),
     );
     Ok(())
 }
